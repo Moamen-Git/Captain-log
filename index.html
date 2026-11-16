@@ -3,28 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
 <title>يومية الكابتن</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap">
 <style>
 /* Layout: one-column phone app, bottom tab bar, four views (summary / new day / log / car). */
 :root{
-  --bg:#EDF0EE; --surface:#FFFFFF; --surface2:#E3E8E5; --ink:#10201B; --muted:#5B6B65; --line:#D2DAD6;
-  --accent:#0A7C59; --accent-ink:#FFFFFF; --accent-soft:#D6EFE5;
-  --warn:#B45309; --warn-soft:#FDE9C8; --bad:#B42318; --bad-soft:#FBD9D5;
+  --bg:#0B0A12; --surface:#14121F; --surface2:#1C1A2B; --ink:#EEEBFA; --muted:#9A94B8; --line:#2A2740;
+  --accent:#7C5CF0; --accent-ink:#FFFFFF; --accent-soft:#251D4A; --accent-fg:#B8A6FF;
+  --warn:#F4B35E; --warn-soft:#3A2A10; --bad:#FF8A7E; --bad-soft:#3D1A16;
   --font:'Cairo','Segoe UI',Tahoma,system-ui,sans-serif;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#0E1613; --surface:#16211C; --surface2:#1E2C26; --ink:#E6EFEA; --muted:#93A59D; --line:#2B3B34;
-    --accent:#3DD6A0; --accent-ink:#05241A; --accent-soft:#123B2D;
-    --warn:#F4B35E; --warn-soft:#3A2A10; --bad:#FF8A7E; --bad-soft:#3D1A16; color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#0E1613; --surface:#16211C; --surface2:#1E2C26; --ink:#E6EFEA; --muted:#93A59D; --line:#2B3B34;
-  --accent:#3DD6A0; --accent-ink:#05241A; --accent-soft:#123B2D;
-  --warn:#F4B35E; --warn-soft:#3A2A10; --bad:#FF8A7E; --bad-soft:#3D1A16; color-scheme:dark;
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
 body{
@@ -54,6 +43,8 @@ h2{font-size:16px; font-weight:800}
 .hero .lbl{font-size:13px; opacity:.85}
 .hero .num{font-size:38px; font-weight:800; line-height:1.2; font-variant-numeric:tabular-nums}
 .hero .sub{font-size:13px; opacity:.85}
+#homeBody{display:flex; flex-direction:column; gap:14px; min-width:0}
+textarea{min-height:130px; direction:ltr; font-size:12px; font-family:monospace}
 .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
 .kpi{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:2px; min-width:0}
 .kpi .k{font-size:12px; color:var(--muted)}
@@ -87,7 +78,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
 .item .t{font-weight:800}
 .item .m{font-size:12px; color:var(--muted); overflow-wrap:anywhere}
 .item .r{font-weight:800; font-size:17px; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:left}
-.pill{display:inline-block; font-size:12px; font-weight:800; border-radius:99px; padding:1px 9px; background:var(--accent-soft); color:var(--accent)}
+.pill{display:inline-block; font-size:12px; font-weight:800; border-radius:99px; padding:1px 9px; background:var(--accent-soft); color:var(--accent-fg)}
 .pill.warn{background:var(--warn-soft); color:var(--warn)}
 .pill.bad{background:var(--bad-soft); color:var(--bad)}
 .empty{text-align:center; padding:28px 12px; display:flex; flex-direction:column; gap:10px; align-items:center}
@@ -107,7 +98,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
   color:var(--muted); font:inherit; font-size:12px; font-weight:600; padding:6px 0; border-radius:10px; cursor:pointer; min-height:52px;
 }
 #nav button svg{width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round}
-#nav button[aria-current=page]{color:var(--accent); background:var(--accent-soft)}
+#nav button[aria-current=page]{color:var(--accent-fg); background:var(--accent-soft)}
 #toast{
   position:fixed; left:50%; transform:translateX(-50%); bottom:calc(84px + env(safe-area-inset-bottom, 0px)); z-index:6;
   background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; font-size:14px;
@@ -117,7 +108,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){#toast{transition:none}}
 </style>
 
-<style>html,body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<style>html,body{margin:0}html{background:var(--bg)}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 </head>
 <body>
 <div class="wrap" id="app"></div>
@@ -245,7 +236,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var s = state.status, cls = '', txt = 'بيحمّل...';
     if (s === 'ok'){ cls = 'ok'; txt = 'محفوظ على التليفون'; }
     else if (s === 'slow'){ cls = 'bad'; txt = 'مش قادر أوصل للبيانات'; }
-    else if (s === 'local' || s === 'fallback'){ cls = 'bad'; txt = 'محفوظ على التليفون'; }
+    else if (s === 'local' || s === 'fallback'){ cls = 'ok'; txt = 'محفوظ على التليفون'; }
     return '<span class="status ' + cls + '"><span class="dot"></span>' + txt + '</span>';
   }
   function fillStatus(){
@@ -266,7 +257,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     });
     var v = state.view, h = '';
     if (v === 'home'){
-      h = '<div class="topbar"><h2>يومية الكابتن</h2><span id="status"></span></div>' + monthBar() + '<div id="homeBody"></div>';
+      h = '<div class="topbar"><h2>يومية الكابتن</h2><span id="status"></span></div>' + monthBar() + '<div id="homeBody"></div><div id="bkCard" class="card form"></div>';
     } else if (v === 'log'){
       h = '<div class="topbar"><h2>سجل الأيام</h2><span id="status"></span></div>' + monthBar() + '<div id="logBody" class="list"></div>';
     } else if (v === 'add'){
@@ -275,6 +266,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       h = carView();
     }
     app.innerHTML = h;
+    if (v === 'home') bkRender();
     if (v === 'add') initAdd();
     if (v === 'car') initCar();
     fill();
@@ -520,8 +512,79 @@ input[type=number]{font-variant-numeric:tabular-nums}
     });
   }
 
+  var bkMode = null;
+  function backupText(){ return 'CAPTAINLOG1:' + JSON.stringify(rows); }
+  function bkRender(){
+    var el = document.getElementById('bkCard');
+    if (!el) return;
+    var Sh = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+    var h = '<h2>النسخ الاحتياطي</h2><p class="muted">خد نسخة من كل بياناتك وابعتها لنفسك على واتساب أو Drive. ولو غيرت التليفون أو مسحت التطبيق ارجّعها منها.</p>' +
+      '<div class="row"><button class="btn ghost" data-a="bkMake">عمل نسخة احتياطية</button><button class="btn ghost" data-a="bkAsk">استرجاع من نسخة</button></div>';
+    if (bkMode === 'make'){
+      h += '<div class="field"><label for="bk-text">النسخة (انسخها أو شاركها واحتفظ بيها)</label><textarea id="bk-text" readonly>' + esc(backupText()) + '</textarea></div>' +
+        '<div class="row">' + (Sh ? '<button class="btn" data-a="bkShare">مشاركة</button>' : '') + '<button class="btn" data-a="bkCopy">نسخ</button></div>';
+    } else if (bkMode === 'restore'){
+      h += '<div class="field"><label for="bk-text">الصق النسخة هنا</label><textarea id="bk-text"></textarea></div>' +
+        '<button class="btn" data-a="bkRestore">استرجاع</button>';
+    }
+    el.innerHTML = h;
+  }
+
   var actions = {
-    go: function(b){ state.view = b.dataset.v; state.armed = null; render(); },
+    go: function(b){ state.view = b.dataset.v; state.armed = null; bkMode = null; render(); },
+    bkMake: function(){
+      if (!rows.length){ toast('مفيش بيانات تتحفظ لسه'); return; }
+      bkMode = 'make'; bkRender();
+    },
+    bkAsk: function(){ bkMode = 'restore'; bkRender(); },
+    bkCopy: function(){
+      var ta = document.getElementById('bk-text');
+      if (!ta) return;
+      var done = function(){ toast('اتنسخت ✓'); };
+      var fallback = function(){
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) { toast('حدد النص وانسخه بإيدك'); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(ta.value).then(done).catch(fallback);
+      } else { fallback(); }
+    },
+    bkShare: function(){
+      var Sh = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+      var ta = document.getElementById('bk-text');
+      if (!Sh || !ta) return;
+      Sh.share({ title:'نسخة يومية الكابتن', text: ta.value, dialogTitle:'ابعت النسخة لنفسك' }).catch(function(){});
+    },
+    bkRestore: async function(b){
+      var ta = document.getElementById('bk-text');
+      var raw = ((ta && ta.value) || '').trim();
+      if (raw.indexOf('CAPTAINLOG1:') !== 0){ toast('النسخة مش صحيحة'); return; }
+      var list;
+      try { list = JSON.parse(raw.slice(12)); } catch (e) { toast('النسخة مش صحيحة'); return; }
+      if (!Array.isArray(list)){ toast('النسخة مش صحيحة'); return; }
+      var ok = list.filter(function(r){
+        return r && typeof r.id === 'string' && /^(day|car)-[A-Za-z0-9_.:@+~-]+$/.test(r.id) &&
+          (r.kind === 'day' || r.kind === 'car') && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date);
+      });
+      if (!ok.length){ toast('مفيش بيانات صالحة في النسخة'); return; }
+      b.disabled = true;
+      try {
+        if (mode === 'local'){
+          var ids = {};
+          ok.forEach(function(r){ ids[r.id] = 1; });
+          rows = rows.filter(function(r){ return !ids[r.id]; }).concat(ok);
+          lsWrite(); fill();
+        } else {
+          for (var i = 0; i < ok.length; i++){
+            var o = Object.assign({}, ok[i]); delete o.id;
+            await put(ok[i].id, o);
+          }
+        }
+        toast('اتسترجع ' + ok.length + ' سجل ✓');
+        bkMode = null; bkRender();
+      } catch (e) { toast('معرفتش أسترجع، جرّب تاني'); }
+      b.disabled = false;
+    },
     pm: function(){ shiftMonth(-1); },
     nm: function(){ shiftMonth(1); },
     edit: function(b){ state.editDate = b.dataset.d; state.view = 'add'; render(); },

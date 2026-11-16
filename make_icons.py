@@ -2,7 +2,7 @@ import os, sys
 from PIL import Image, ImageDraw
 
 RES = sys.argv[1] if len(sys.argv) > 1 else "android/app/src/main/res"
-BG = (10, 124, 89)
+BG = (91, 63, 209)
 FG = (255, 255, 255)
 S = 4  # supersampling for smooth edges
 
@@ -41,5 +41,5 @@ for dens, (launcher, foreground) in SIZES.items():
 values = os.path.join(RES, "values")
 if os.path.isdir(values):
     with open(os.path.join(values, "ic_launcher_background.xml"), "w", encoding="utf-8") as f:
-        f.write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0A7C59</color>\n</resources>\n')
+        f.write('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#5B3FD1</color>\n</resources>\n')
 print("icons done")
