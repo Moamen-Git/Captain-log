@@ -50,6 +50,7 @@ textarea{min-height:130px; direction:ltr; font-size:12px; font-family:monospace}
 .kpi .k{font-size:12px; color:var(--muted)}
 .kpi .v{font-size:19px; font-weight:800; font-variant-numeric:tabular-nums; overflow-wrap:anywhere}
 .neg{color:var(--bad)}
+.sum{color:var(--accent-fg); font-weight:800}
 .field{display:flex; flex-direction:column; gap:4px; min-width:0}
 .field label{font-size:12px; color:var(--muted); font-weight:600}
 input,select,textarea{
@@ -69,7 +70,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
 .row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
 .row>*{flex:1 1 140px}
 .preview{background:var(--accent-soft); border-radius:12px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px}
-.preview b{font-size:22px; font-variant-numeric:tabular-nums}
+.preview b{font-size:22px; font-variant-numeric:tabular-nums; white-space:nowrap; flex:none}
+.preview span{min-width:0}
 .banner{background:var(--warn-soft); color:var(--warn); border-radius:10px; padding:8px 12px; font-size:13px; font-weight:600}
 .list{display:flex; flex-direction:column; gap:8px}
 .item{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px; display:flex; gap:12px; align-items:center; justify-content:space-between; min-width:0; cursor:pointer}
@@ -257,7 +259,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     });
     var v = state.view, h = '';
     if (v === 'home'){
-      h = '<div class="topbar"><h2>يومية الكابتن</h2><span id="status"></span></div>' + monthBar() + '<div id="homeBody"></div><div id="bkCard" class="card form"></div>';
+      h = '<div class="topbar"><h2>يومية الكابتن</h2><span id="status"></span></div><div id="bkTop" hidden></div>' + monthBar() + '<div id="homeBody"></div><div id="bkCard" class="card form"></div>';
     } else if (v === 'log'){
       h = '<div class="topbar"><h2>سجل الأيام</h2><span id="status"></span></div>' + monthBar() + '<div id="logBody" class="list"></div>';
     } else if (v === 'add'){
@@ -277,6 +279,59 @@ input[type=number]{font-variant-numeric:tabular-nums}
     return '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'number') + '" ' + (extra || 'inputmode="decimal" min="0" step="any"') + '></div>';
   }
 
+  var TEXT_KEYS = ['other','home','debts'];
+  function sumText(v){
+    var t = String(v == null ? '' : v)
+      .replace(/[٠-٩]/g, function(d){ return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/٫/g, '.')
+      .replace(/(\d)[,،](?=\d{3}(?!\d))/g, '$1');
+    var m = t.match(/\d+(?:\.\d+)?/g) || [];
+    return m.reduce(function(a, x){ return a + parseFloat(x); }, 0);
+  }
+  function isPlainNumber(v){
+    return /^\s*[\d٠-٩]+([.٫][\d٠-٩]+)?\s*$/.test(String(v));
+  }
+  var DEFAULT_RATE = 2;
+  var saveTouched = false;
+  function getRate(){
+    var r = rows.filter(function(x){ return x.kind === 'settings'; })[0];
+    return r && isFinite(+r.rate) && +r.rate >= 0 ? +r.rate : DEFAULT_RATE;
+  }
+  function suggestSave(){
+    var km = num(document.getElementById('f-km').value);
+    return km > 0 ? Math.round(km * getRate()) : 0;
+  }
+  function updateSaveHint(){
+    var h = document.getElementById('saveHint');
+    if (!h) return;
+    var km = num(document.getElementById('f-km').value);
+    if (!km){ h.innerHTML = ''; return; }
+    var sug = suggestSave();
+    var cur = document.getElementById('f-save').value.trim();
+    var same = cur !== '' && num(cur) === sug;
+    h.innerHTML = 'المقترح: <span class="sum">' + fmt(sug, 0) + ' ج.م</span> (' + fmt(km, 1) + ' كم × ' + fmt(getRate(), 2) + ' ج.م للكيلو)' +
+      (same ? '' : ' <button class="btn ghost" type="button" data-a="useSug" style="min-height:34px;font-size:13px;padding:0 10px">استخدم المقترح</button>');
+  }
+  function autoSave(){
+    var el = document.getElementById('f-save');
+    if (!el) return;
+    if (!saveTouched){
+      var sug = suggestSave();
+      el.value = sug ? String(sug) : '';
+    }
+    updateSaveHint();
+  }
+  function tf(id, label){
+    return '<div class="field"><label for="' + id + '">' + label + ' <span class="sum" id="s-' + id.slice(2) + '"></span></label>' +
+      '<input id="' + id + '" type="text" autocomplete="off" autocapitalize="off" enterkeyhint="next"></div>';
+  }
+  function itemsText(r){
+    var out = [];
+    [['other','رسوم'],['home','إضافية'],['debts','ديون']].forEach(function(p){
+      if (r[p[0] + 'T']) out.push(p[1] + ': ' + r[p[0] + 'T']);
+    });
+    return out.join(' | ');
+  }
   function addForm(){
     return '<div class="topbar"><h2>تسجيل يوم</h2><span id="status"></span></div>' +
       '<div id="editBanner" class="banner" hidden>اليوم ده متسجّل قبل كده. أي تعديل هيحل محله.</div>' +
@@ -284,18 +339,20 @@ input[type=number]{font-variant-numeric:tabular-nums}
         f('f-date', 'التاريخ', 'date', '') +
         '<div class="row">' + f('f-trips', 'عدد الرحلات', 'number', 'inputmode="numeric" min="0" step="1"') + f('f-km', 'الكيلومترات') + '</div>' +
         '<div class="row">' + f('f-hours', 'ساعات الشغل') + f('f-gross', 'إيراد الرحلات (بعد عمولة أوبر)') + '</div>' +
-        '<div class="row">' + f('f-tips', 'بقشيش / مكافآت') + f('f-other', 'مصاريف إضافية (باركينج/رسوم)') + '</div>' +
+        '<div class="row">' + f('f-tips', 'بقشيش / مكافآت') + tf('f-other', 'مصاريف إضافية (باركينج/رسوم)') + '</div>' +
         '<div class="row">' + f('f-liters', 'لترات البنزين') + f('f-fuel', 'تكلفة البنزين') + '</div>' +
-        f('f-save', 'المحوّش للعربية') +
+        f('f-save', 'صيانة العربية') +
+        '<div id="saveHint" class="muted"></div>' +
         '<h2>الفلوس</h2>' +
+        '<p class="muted">في المصاريف الإضافية والديون اكتب البند ورقمه. الأرقام اللي تكتبها بتتجمع لوحدها وبيظهر المجموع جنب اسم الخانة.</p>' +
         f('f-cash', 'إجمالي الفلوس') +
         f('f-pocket', 'محفظتي') +
-        f('f-home', 'مصاريف إضافية') +
-        f('f-debts', 'الديون') +
+        tf('f-home', 'مصاريف إضافية') +
+        tf('f-debts', 'الديون') +
         '<div class="field"><label for="f-note">ملاحظات</label><input id="f-note" type="text" autocomplete="off"></div>' +
         '<div class="preview"><span>صافي الربح</span><b id="f-net">0</b></div>' +
-        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف الإضافية</span><b id="f-left">0</b></div>' +
-        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية.</p>' +
+        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف والصيانة</span><b id="f-left">0</b></div>' +
+        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية − صيانة العربية.</p>' +
         '<button class="btn" data-a="saveDay" id="saveDayBtn">حفظ اليوم</button>' +
         '<button class="btn danger" data-a="delDay" id="delDayBtn" hidden>حذف اليوم</button>' +
       '</div>';
@@ -307,19 +364,26 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var r = days().filter(function(x){ return x.date === date; })[0];
     Object.keys(DAY_IDS).forEach(function(k){
       var el = document.getElementById(DAY_IDS[k]);
-      if (el) el.value = r && r[k] != null ? r[k] : '';
+      if (el){
+        if (r && TEXT_KEYS.indexOf(k) >= 0 && r[k + 'T']) el.value = r[k + 'T'];
+        else el.value = r && r[k] != null ? r[k] : '';
+      }
     });
     document.getElementById('editBanner').hidden = !r;
     document.getElementById('delDayBtn').hidden = !r;
     state.armed = null;
     document.getElementById('delDayBtn').textContent = 'حذف اليوم';
+    saveTouched = !!r;
+    autoSave();
     preview();
   }
   function readDay(){
     var o = { kind:'day', date: document.getElementById('f-date').value };
     Object.keys(DAY_IDS).forEach(function(k){
       var v = document.getElementById(DAY_IDS[k]).value;
-      o[k] = k === 'note' ? v.trim() : num(v);
+      if (k === 'note') o[k] = v.trim();
+      else if (TEXT_KEYS.indexOf(k) >= 0){ o[k] = sumText(v); o[k + 'T'] = v.trim(); }
+      else o[k] = num(v);
     });
     return o;
   }
@@ -330,9 +394,14 @@ input[type=number]{font-variant-numeric:tabular-nums}
     if (!el) return;
     el.textContent = fmt(n) + ' ج.م';
     el.className = n < 0 ? 'neg' : '';
-    var left = num(o.cash) - num(o.pocket) - num(o.home);
+    var left = num(o.cash) - num(o.pocket) - num(o.home) - num(o.save);
     var le = document.getElementById('f-left');
     if (le){ le.textContent = fmt(left) + ' ج.م'; le.className = left < 0 ? 'neg' : ''; }
+    TEXT_KEYS.forEach(function(k){
+      var raw = document.getElementById(DAY_IDS[k]).value;
+      var sp = document.getElementById('s-' + k);
+      if (sp) sp.textContent = (raw.trim() && !isPlainNumber(raw)) ? '= ' + fmt(sumText(raw)) : '';
+    });
   }
   function initAdd(){
     var d = state.editDate || ymd(new Date());
@@ -340,6 +409,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
     document.getElementById('f-date').value = d;
     loadDay(d);
     document.getElementById('f-date').addEventListener('change', function(e){ if (e.target.value) loadDay(e.target.value); });
+    document.getElementById('f-km').addEventListener('input', function(){ autoSave(); preview(); });
+    document.getElementById('f-save').addEventListener('input', function(e){ saveTouched = e.target.value.trim() !== ''; updateSaveHint(); });
     app.querySelectorAll('.card input').forEach(function(el){ el.addEventListener('input', preview); });
   }
 
@@ -347,18 +418,22 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var opts = TYPES.map(function(t){ return '<option>' + t + '</option>'; }).join('');
     return '<div class="topbar"><h2>مصاريف العربية</h2><span id="status"></span></div>' +
       '<div id="carStats" class="grid2"></div>' +
+      '<div class="card form"><h2>صيانة الكيلو</h2>' +
+        '<p class="muted">عن كل كيلو بتشتغله بتحوّش المبلغ ده للصيانة. بيتحسب لوحده في «يوم جديد» وتقدر تعدله بإيدك في أي يوم.</p>' +
+        '<div class="row">' + f('r-rate', 'ج.م لكل كيلو', 'number', 'inputmode="decimal" min="0" step="0.1"') + '<button class="btn" data-a="saveRate">حفظ</button></div>' +
+        '<p class="muted" id="rateInfo"></p></div>' +
       '<div class="card form">' +
         '<h2>إضافة مصروف</h2>' +
         f('c-date', 'التاريخ', 'date', '') +
         '<div class="field"><label for="c-type">النوع</label><select id="c-type">' + opts + '</select></div>' +
-        '<div class="field"><label for="c-detail">التفاصيل</label><input id="c-detail" type="text" autocomplete="off" placeholder="مثلاً: زيت 5W-30 + فلتر"></div>' +
+        '<div class="field"><label for="c-detail">التفاصيل</label><input id="c-detail" type="text" autocomplete="off"></div>' +
         '<div class="row">' + f('c-cost', 'التكلفة') + f('c-odo', 'قراءة العداد (كم)', 'number', 'inputmode="numeric" min="0" step="1"') + '</div>' +
         '<div class="row">' + f('c-next', 'التغيير الجاي عند (كم)', 'number', 'inputmode="numeric" min="0" step="1"') + '<div class="field"><label for="c-place">الورشة / المكان</label><input id="c-place" type="text" autocomplete="off"></div></div>' +
         '<button class="btn" data-a="saveCar" id="saveCarBtn">حفظ المصروف</button>' +
       '</div>' +
       '<h2>السجل</h2><div id="carList" class="list"></div>';
   }
-  function initCar(){ document.getElementById('c-date').value = ymd(new Date()); }
+  function initCar(){ document.getElementById('c-date').value = ymd(new Date()); document.getElementById('r-rate').value = getRate(); }
 
   /* ---------------------------------------------------------------- data fill */
   function latestOdo(){
@@ -371,7 +446,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     fillStatus();
     var ml = document.getElementById('mlabel');
     if (ml) ml.textContent = nameMonth(state.month);
-    if (state.view === 'home') fillHome();
+    if (state.view === 'home'){ fillHome(); bkTopRender(); }
     else if (state.view === 'log') fillLog();
     else if (state.view === 'car') fillCar();
     else if (state.view === 'add'){
@@ -441,7 +516,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     h += '<div class="grid2">' + kpi('محفظتي', fmt(sum(list, 'pocket'))) + kpi('مصاريف إضافية', fmt(sum(list, 'home'))) + '</div>';
     h += '<div class="card"><h2>صافي الربح كل يوم</h2><div style="height:8px"></div>' + (list.length ? chartSvg(list) : '<p class="muted">مفيش أيام في الشهر ده.</p>') + '</div>';
     h += '<div class="card"><h2>صندوق العربية</h2><div style="height:8px"></div><div class="grid2">' +
-      kpi('محوّش الشهر ده', fmt(saved)) + kpi('مصروف الشهر ده', fmt(spent)) + '</div>' +
+      kpi('مخصص للصيانة', fmt(saved)) + kpi('مصروف الشهر ده', fmt(spent)) + '</div>' +
       '<div style="height:10px"></div><div class="preview"><span>الرصيد الكلي</span><b class="' + (fundAll < 0 ? 'neg' : '') + '">' + fmt(fundAll) + ' ج.م</b></div></div>';
     if (dl){
       h += '<div class="row"><button class="btn ghost" data-a="expDays">تصدير اليوميات CSV</button><button class="btn ghost" data-a="expCar">تصدير مصاريف العربية CSV</button></div>';
@@ -462,10 +537,11 @@ input[type=number]{font-variant-numeric:tabular-nums}
     el.innerHTML = list.map(function(r){
       var n = netOf(r);
       var meta = fmt(r.trips, 0) + ' رحلة · ' + fmt(r.km, 1) + ' كم · بنزين ' + fmt(r.fuel);
+      if (num(r.other)) meta += ' · رسوم ' + esc(r.otherT || fmt(r.other));
       if (num(r.cash)) meta += ' · إجمالي ' + fmt(r.cash);
       if (num(r.pocket)) meta += ' · محفظتي ' + fmt(r.pocket);
-      if (num(r.home)) meta += ' · إضافية ' + fmt(r.home);
-      if (num(r.debts)) meta += ' · ديون ' + fmt(r.debts);
+      if (num(r.home)) meta += ' · إضافية ' + esc(r.homeT || fmt(r.home));
+      if (num(r.debts)) meta += ' · ديون ' + esc(r.debtsT || fmt(r.debts));
       if (r.note) meta += ' · ' + esc(r.note);
       return '<div class="item" data-a="edit" data-d="' + esc(r.date) + '"><div class="l"><span class="t">' + nameDate(r.date) + '</span><span class="m">' + meta + '</span></div>' +
         '<span class="r ' + (n < 0 ? 'neg' : '') + '">' + fmt(n) + '</span></div>';
@@ -480,6 +556,15 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var odo = latestOdo();
     var total = cs.reduce(function(a, c){ return a + num(c.cost); }, 0);
     st.innerHTML = kpi('آخر قراءة عداد', odo ? fmt(odo, 0) + ' كم' : '-') + kpi('إجمالي المصاريف', fmt(total) + ' ج.م');
+    var ri = document.getElementById('rateInfo');
+    if (ri){
+      var kmAll = sum(days(), 'km');
+      var txt = 'يعني كل 100 كم بتحوّش ' + fmt(getRate() * 100, 0) + ' ج.م.';
+      if (kmAll > 0 && total > 0){
+        txt += ' التكلفة الفعلية من مصاريف العربية اللي سجلتها: ' + fmt(total / kmAll, 2) + ' ج.م للكيلو (' + fmt(total, 0) + ' ج.م على ' + fmt(kmAll, 0) + ' كم)' + (kmAll < 1000 ? '. الرقم ده لسه بدري يتحكم بيه لأن الكيلومترات قليلة.' : '.');
+      }
+      ri.textContent = txt;
+    }
     // reminders only count on the newest entry of each type
     var seen = {};
     var latestByType = {};
@@ -527,22 +612,85 @@ input[type=number]{font-variant-numeric:tabular-nums}
   }
 
   var bkMode = null;
+  var LS_BK = 'captain-last-backup';
+  function plugin(n){ return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[n]; }
   function backupText(){ return 'CAPTAINLOG1:' + JSON.stringify(rows); }
+  function lastBackup(){ try { return +localStorage.getItem(LS_BK) || 0; } catch (e) { return 0; } }
+  function markBackup(){ try { localStorage.setItem(LS_BK, String(Date.now())); } catch (e) {} }
+  function bkAge(){
+    var t = lastBackup();
+    if (!t) return { txt:'لسه معملتش نسخة احتياطية.', late: rows.length > 0 };
+    var d = Math.floor((Date.now() - t) / 86400000);
+    var txt = d <= 0 ? 'آخر نسخة: النهارده.' : (d === 1 ? 'آخر نسخة: امبارح.' : 'آخر نسخة: من ' + d + ' يوم.');
+    return { txt: txt, late: d >= 7 };
+  }
+  function bkTopRender(){
+    var top = document.getElementById('bkTop');
+    if (!top) return;
+    var age = bkAge();
+    top.hidden = !age.late;
+    top.innerHTML = age.late ? '<div class="banner">' + age.txt + ' اعمل نسخة علشان بياناتك متضيعش لو التليفون اتغير أو التطبيق اتمسح.<br><button class="btn" data-a="bkFile" style="min-height:38px;font-size:14px;margin-top:8px">اعمل نسخة دلوقتي</button></div>' : '';
+  }
   function bkRender(){
     var el = document.getElementById('bkCard');
     if (!el) return;
-    var Sh = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
-    var h = '<h2>النسخ الاحتياطي</h2><p class="muted">خد نسخة من كل بياناتك وابعتها لنفسك على واتساب أو Drive. ولو غيرت التليفون أو مسحت التطبيق ارجّعها منها.</p>' +
-      '<div class="row"><button class="btn ghost" data-a="bkMake">عمل نسخة احتياطية</button><button class="btn ghost" data-a="bkAsk">استرجاع من نسخة</button></div>';
+    var age = bkAge();
+    bkTopRender();
+    var h = '<h2>النسخ الاحتياطي</h2><p class="muted">' + age.txt + '</p>' +
+      '<p class="muted">بتحفظ كل بياناتك في ملف وتبعته لنفسك على واتساب أو Drive بضغطة واحدة. ولو غيرت التليفون أو مسحت التطبيق، ارجّعها من الملف.</p>' +
+      '<div class="row"><button class="btn" data-a="bkFile">حفظ نسخة وإرسالها</button><button class="btn ghost" data-a="bkPick">استرجاع من ملف</button></div>' +
+      '<input id="bk-file" type="file" hidden>' +
+      '<div class="row"><button class="btn ghost" style="min-height:40px;font-size:14px" data-a="bkMake">نسخة كنص</button><button class="btn ghost" style="min-height:40px;font-size:14px" data-a="bkAsk">استرجاع بلصق نص</button></div>';
     if (bkMode === 'make'){
       h += '<div class="field"><label for="bk-text">النسخة (انسخها أو شاركها واحتفظ بيها)</label><textarea id="bk-text" readonly>' + esc(backupText()) + '</textarea></div>' +
-        '<div class="row">' + (Sh ? '<button class="btn" data-a="bkShare">مشاركة</button>' : '') + '<button class="btn" data-a="bkCopy">نسخ</button></div>';
+        '<div class="row">' + (plugin('Share') ? '<button class="btn" data-a="bkShare">مشاركة</button>' : '') + '<button class="btn" data-a="bkCopy">نسخ</button></div>';
     } else if (bkMode === 'restore'){
       h += '<div class="field"><label for="bk-text">الصق النسخة هنا</label><textarea id="bk-text"></textarea></div>' +
         '<button class="btn" data-a="bkRestore">استرجاع</button>';
     }
     el.innerHTML = h;
   }
+
+  async function restoreRaw(raw){
+    raw = String(raw || '').replace(/^﻿/, '').trim();
+    if (raw.indexOf('CAPTAINLOG1:') !== 0){ toast('النسخة مش صحيحة'); return; }
+    var list;
+    try { list = JSON.parse(raw.slice(12)); } catch (e) { toast('النسخة مش صحيحة'); return; }
+    if (!Array.isArray(list)){ toast('النسخة مش صحيحة'); return; }
+    var ok = list.filter(function(r){
+      if (!r || typeof r.id !== 'string') return false;
+      if (r.id === 'settings') return r.kind === 'settings' && isFinite(+r.rate) && +r.rate >= 0;
+      return /^(day|car)-[A-Za-z0-9_.:@+~-]+$/.test(r.id) &&
+        (r.kind === 'day' || r.kind === 'car') && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date);
+    });
+    if (!ok.length){ toast('مفيش بيانات صالحة في النسخة'); return; }
+    try {
+      if (mode === 'local'){
+        var ids = {};
+        ok.forEach(function(r){ ids[r.id] = 1; });
+        rows = rows.filter(function(r){ return !ids[r.id]; }).concat(ok);
+        lsWrite(); fill();
+      } else {
+        for (var i = 0; i < ok.length; i++){
+          var o = Object.assign({}, ok[i]); delete o.id;
+          await put(ok[i].id, o);
+        }
+      }
+      toast('اتسترجع ' + ok.length + ' سجل ✓');
+      bkMode = null; bkRender();
+    } catch (e) { toast('معرفتش أسترجع، جرّب تاني'); }
+  }
+
+  document.addEventListener('change', function(e){
+    var t = e.target;
+    if (!t || t.id !== 'bk-file' || !t.files || !t.files[0]) return;
+    var file = t.files[0];
+    if (file.size > 5 * 1024 * 1024){ toast('الملف ده كبير ومش نسخة احتياطية'); t.value = ''; return; }
+    var rd = new FileReader();
+    rd.onload = function(){ restoreRaw(String(rd.result || '')); t.value = ''; };
+    rd.onerror = function(){ toast('معرفتش أقرا الملف'); };
+    rd.readAsText(file);
+  });
 
   var actions = {
     go: function(b){ state.view = b.dataset.v; state.armed = null; bkMode = null; render(); },
@@ -551,6 +699,30 @@ input[type=number]{font-variant-numeric:tabular-nums}
       bkMode = 'make'; bkRender();
     },
     bkAsk: function(){ bkMode = 'restore'; bkRender(); },
+    useSug: function(){ saveTouched = false; autoSave(); preview(); },
+    bkFile: async function(b){
+      if (!rows.length){ toast('مفيش بيانات تتحفظ لسه'); return; }
+      var Fs = plugin('Filesystem'), Sh = plugin('Share');
+      if (!Fs || !Sh){ toast('الحفظ في ملف مش متاح هنا، استخدم النسخة كنص'); bkMode = 'make'; bkRender(); return; }
+      b.disabled = true;
+      try {
+        var res = await Fs.writeFile({ path: 'captain-log-backup-' + ymd(new Date()) + '.json', data: backupText(), directory: 'CACHE', encoding: 'utf8' });
+        await Sh.share({ title: 'نسخة يومية الكابتن', text: 'نسخة احتياطية ليومية الكابتن', url: res.uri, dialogTitle: 'احفظ النسخة أو ابعتها لنفسك' });
+        markBackup(); bkRender();
+      } catch (e) {
+        if (!/cancel/i.test(String(e && e.message))) toast('معرفتش أعمل النسخة، جرّب تاني');
+      }
+      b.disabled = false;
+    },
+    bkPick: function(){ var f = document.getElementById('bk-file'); if (f) f.click(); },
+    saveRate: async function(b){
+      var v = parseFloat(document.getElementById('r-rate').value);
+      if (!isFinite(v) || v < 0){ toast('اكتب رقم صحيح'); return; }
+      b.disabled = true;
+      try { await put('settings', { kind:'settings', rate: v }); toast('اتحفظ ✓'); }
+      catch (e) { toast('معرفتش أحفظ، جرّب تاني'); }
+      b.disabled = false;
+    },
     bkCopy: function(){
       var ta = document.getElementById('bk-text');
       if (!ta) return;
@@ -571,32 +743,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
     },
     bkRestore: async function(b){
       var ta = document.getElementById('bk-text');
-      var raw = ((ta && ta.value) || '').trim();
-      if (raw.indexOf('CAPTAINLOG1:') !== 0){ toast('النسخة مش صحيحة'); return; }
-      var list;
-      try { list = JSON.parse(raw.slice(12)); } catch (e) { toast('النسخة مش صحيحة'); return; }
-      if (!Array.isArray(list)){ toast('النسخة مش صحيحة'); return; }
-      var ok = list.filter(function(r){
-        return r && typeof r.id === 'string' && /^(day|car)-[A-Za-z0-9_.:@+~-]+$/.test(r.id) &&
-          (r.kind === 'day' || r.kind === 'car') && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date);
-      });
-      if (!ok.length){ toast('مفيش بيانات صالحة في النسخة'); return; }
       b.disabled = true;
-      try {
-        if (mode === 'local'){
-          var ids = {};
-          ok.forEach(function(r){ ids[r.id] = 1; });
-          rows = rows.filter(function(r){ return !ids[r.id]; }).concat(ok);
-          lsWrite(); fill();
-        } else {
-          for (var i = 0; i < ok.length; i++){
-            var o = Object.assign({}, ok[i]); delete o.id;
-            await put(ok[i].id, o);
-          }
-        }
-        toast('اتسترجع ' + ok.length + ' سجل ✓');
-        bkMode = null; bkRender();
-      } catch (e) { toast('معرفتش أسترجع، جرّب تاني'); }
+      await restoreRaw(ta ? ta.value : '');
       b.disabled = false;
     },
     pm: function(){ shiftMonth(-1); },
@@ -659,9 +807,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
       try { await remove(id); toast('اتمسح'); } catch (e) { toast('معرفتش أمسح، جرّب تاني'); }
     },
     expDays: function(){
-      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','المحوّش للعربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','صافي الربح','ملاحظات'];
+      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','صيانة العربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','تفاصيل البنود','صافي الربح','ملاحظات'];
       var lines = days().sort(function(a, b){ return a.date < b.date ? -1 : 1; }).map(function(r){
-        return [r.date, r.trips, r.km, r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, netOf(r), r.note || ''];
+        return [r.date, r.trips, r.km, r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, itemsText(r), netOf(r), r.note || ''];
       });
       exportCsv('captain-days.csv', head, lines);
     },
