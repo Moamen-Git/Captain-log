@@ -66,7 +66,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
 .btn.ghost{background:transparent; color:var(--ink); border-color:var(--line); font-weight:600}
 .btn.danger{background:var(--bad-soft); color:var(--bad); border-color:var(--bad-soft)}
 .btn[disabled]{opacity:.6; cursor:default}
-.row{display:flex; gap:10px; flex-wrap:wrap}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end}
 .row>*{flex:1 1 140px}
 .preview{background:var(--accent-soft); border-radius:12px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px}
 .preview b{font-size:22px; font-variant-numeric:tabular-nums}
@@ -155,7 +155,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     try { return d.toLocaleDateString('ar-EG-u-nu-latn', { month:'long', year:'numeric' }); }
     catch (e) { return m; }
   }
-  function netOf(r){ return num(r.gross) - num(r.comm) + num(r.tips) - num(r.fuel) - num(r.other); }
+  function netOf(r){ return num(r.gross) + num(r.tips) - num(r.fuel) - num(r.other); }
 
   var state = { view:'home', month: ym(new Date()), editDate:null, armed:null, status:'loading' };
   var rows = [];
@@ -283,19 +283,25 @@ input[type=number]{font-variant-numeric:tabular-nums}
       '<div class="card form">' +
         f('f-date', 'التاريخ', 'date', '') +
         '<div class="row">' + f('f-trips', 'عدد الرحلات', 'number', 'inputmode="numeric" min="0" step="1"') + f('f-km', 'الكيلومترات') + '</div>' +
-        '<div class="row">' + f('f-hours', 'ساعات الشغل') + f('f-gross', 'إجمالي إيراد الرحلات') + '</div>' +
-        '<div class="row">' + f('f-comm', 'عمولة أوبر') + f('f-tips', 'بقشيش / مكافآت') + '</div>' +
+        '<div class="row">' + f('f-hours', 'ساعات الشغل') + f('f-gross', 'إيراد الرحلات (بعد عمولة أوبر)') + '</div>' +
+        '<div class="row">' + f('f-tips', 'بقشيش / مكافآت') + f('f-other', 'مصاريف إضافية (باركينج/رسوم)') + '</div>' +
         '<div class="row">' + f('f-liters', 'لترات البنزين') + f('f-fuel', 'تكلفة البنزين') + '</div>' +
-        '<div class="row">' + f('f-other', 'مصاريف تانية (باركينج/رسوم)') + f('f-save', 'المحوّش للعربية') + '</div>' +
+        f('f-save', 'المحوّش للعربية') +
+        '<h2>الفلوس</h2>' +
+        f('f-cash', 'إجمالي الفلوس') +
+        f('f-pocket', 'محفظتي') +
+        f('f-home', 'مصاريف إضافية') +
+        f('f-debts', 'الديون') +
         '<div class="field"><label for="f-note">ملاحظات</label><input id="f-note" type="text" autocomplete="off"></div>' +
         '<div class="preview"><span>صافي الربح</span><b id="f-net">0</b></div>' +
-        '<p class="muted">إجمالي الإيراد هو اللي ظاهر في تطبيق أوبر قبل العمولة. صافي الربح = الإيراد − العمولة + البقشيش − البنزين − المصاريف التانية.</p>' +
+        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف الإضافية</span><b id="f-left">0</b></div>' +
+        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية.</p>' +
         '<button class="btn" data-a="saveDay" id="saveDayBtn">حفظ اليوم</button>' +
         '<button class="btn danger" data-a="delDay" id="delDayBtn" hidden>حذف اليوم</button>' +
       '</div>';
   }
 
-  var DAY_IDS = { trips:'f-trips', km:'f-km', hours:'f-hours', gross:'f-gross', comm:'f-comm', tips:'f-tips', liters:'f-liters', fuel:'f-fuel', other:'f-other', save:'f-save', note:'f-note' };
+  var DAY_IDS = { trips:'f-trips', km:'f-km', hours:'f-hours', gross:'f-gross', tips:'f-tips', liters:'f-liters', fuel:'f-fuel', other:'f-other', save:'f-save', cash:'f-cash', pocket:'f-pocket', home:'f-home', debts:'f-debts', note:'f-note' };
 
   function loadDay(date){
     var r = days().filter(function(x){ return x.date === date; })[0];
@@ -324,6 +330,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
     if (!el) return;
     el.textContent = fmt(n) + ' ج.م';
     el.className = n < 0 ? 'neg' : '';
+    var left = num(o.cash) - num(o.pocket) - num(o.home);
+    var le = document.getElementById('f-left');
+    if (le){ le.textContent = fmt(left) + ' ج.م'; le.className = left < 0 ? 'neg' : ''; }
   }
   function initAdd(){
     var d = state.editDate || ymd(new Date());
@@ -415,8 +424,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
       el.innerHTML = '<div class="card empty"><h2>لسه مفيش أيام متسجلة</h2><p class="muted">سجّل أول يوم شغل وهتشوف هنا صافي ربحك، الكيلومترات، عمولة أوبر ومصاريف البنزين.</p><button class="btn" data-a="go" data-v="add">سجّل أول يوم</button></div>';
       return;
     }
-    var gross = sum(list, 'gross'), comm = sum(list, 'comm'), tips = sum(list, 'tips'), fuel = sum(list, 'fuel'), other = sum(list, 'other');
-    var net = gross - comm + tips - fuel - other;
+    var gross = sum(list, 'gross'), tips = sum(list, 'tips'), fuel = sum(list, 'fuel'), other = sum(list, 'other');
+    var net = gross + tips - fuel - other;
     var km = sum(list, 'km'), hrs = sum(list, 'hours'), trips = sum(list, 'trips');
     var worked = list.filter(function(r){ return num(r.gross) > 0; }).length;
     var saved = sum(list, 'save');
@@ -426,9 +435,10 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var h = '<div class="card hero"><span class="lbl">صافي ربح الشهر</span><span class="num">' + fmt(net) + ' ج.م</span><span class="sub">' + worked + ' يوم شغل · متوسط ' + fmt(perDay, 0) + ' ج.م في اليوم</span></div>';
     h += '<div class="grid2">' +
       kpi('الرحلات', fmt(trips, 0)) + kpi('الكيلومترات', fmt(km, 1)) +
-      kpi('إجمالي الإيراد', fmt(gross)) + kpi('عمولة أوبر', fmt(comm)) +
-      kpi('البنزين', fmt(fuel)) + kpi('مصاريف تانية', fmt(other)) +
+      kpi('إجمالي الإيراد', fmt(gross)) + kpi('بقشيش / مكافآت', fmt(tips)) +
+      kpi('البنزين', fmt(fuel)) + kpi('مصاريف إضافية (باركينج/رسوم)', fmt(other)) +
       kpi('ربح الكيلو', fmt(perKm)) + kpi('ربح الساعة', fmt(perHr)) + '</div>';
+    h += '<div class="grid2">' + kpi('محفظتي', fmt(sum(list, 'pocket'))) + kpi('مصاريف إضافية', fmt(sum(list, 'home'))) + '</div>';
     h += '<div class="card"><h2>صافي الربح كل يوم</h2><div style="height:8px"></div>' + (list.length ? chartSvg(list) : '<p class="muted">مفيش أيام في الشهر ده.</p>') + '</div>';
     h += '<div class="card"><h2>صندوق العربية</h2><div style="height:8px"></div><div class="grid2">' +
       kpi('محوّش الشهر ده', fmt(saved)) + kpi('مصروف الشهر ده', fmt(spent)) + '</div>' +
@@ -451,7 +461,11 @@ input[type=number]{font-variant-numeric:tabular-nums}
     }
     el.innerHTML = list.map(function(r){
       var n = netOf(r);
-      var meta = fmt(r.trips, 0) + ' رحلة · ' + fmt(r.km, 1) + ' كم · عمولة ' + fmt(r.comm) + ' · بنزين ' + fmt(r.fuel);
+      var meta = fmt(r.trips, 0) + ' رحلة · ' + fmt(r.km, 1) + ' كم · بنزين ' + fmt(r.fuel);
+      if (num(r.cash)) meta += ' · إجمالي ' + fmt(r.cash);
+      if (num(r.pocket)) meta += ' · محفظتي ' + fmt(r.pocket);
+      if (num(r.home)) meta += ' · إضافية ' + fmt(r.home);
+      if (num(r.debts)) meta += ' · ديون ' + fmt(r.debts);
       if (r.note) meta += ' · ' + esc(r.note);
       return '<div class="item" data-a="edit" data-d="' + esc(r.date) + '"><div class="l"><span class="t">' + nameDate(r.date) + '</span><span class="m">' + meta + '</span></div>' +
         '<span class="r ' + (n < 0 ? 'neg' : '') + '">' + fmt(n) + '</span></div>';
@@ -645,9 +659,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
       try { await remove(id); toast('اتمسح'); } catch (e) { toast('معرفتش أمسح، جرّب تاني'); }
     },
     expDays: function(){
-      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إجمالي الإيراد','عمولة أوبر','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف تانية','المحوّش للعربية','صافي الربح','ملاحظات'];
+      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','المحوّش للعربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','صافي الربح','ملاحظات'];
       var lines = days().sort(function(a, b){ return a.date < b.date ? -1 : 1; }).map(function(r){
-        return [r.date, r.trips, r.km, r.hours, r.gross, r.comm, r.tips, r.liters, r.fuel, r.other, r.save, netOf(r), r.note || ''];
+        return [r.date, r.trips, r.km, r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, netOf(r), r.note || ''];
       });
       exportCsv('captain-days.csv', head, lines);
     },
