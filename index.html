@@ -51,6 +51,10 @@ textarea{min-height:130px; direction:ltr; font-size:12px; font-family:monospace}
 .kpi .v{font-size:19px; font-weight:800; font-variant-numeric:tabular-nums; overflow-wrap:anywhere}
 .neg{color:var(--bad)}
 .sum{color:var(--accent-fg); font-weight:800}
+.seg{display:flex; gap:8px}
+.segb{flex:1; min-height:44px; border-radius:12px; border:1px solid var(--line); background:var(--surface2); color:var(--muted); font:inherit; font-weight:800; font-size:15px; cursor:pointer}
+.segb[aria-pressed=true]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
+.segb[data-v=unpaid][aria-pressed=true]{background:var(--warn-soft); border-color:var(--warn); color:var(--warn)}
 .field{display:flex; flex-direction:column; gap:4px; min-width:0}
 .field label{font-size:12px; color:var(--muted); font-weight:600}
 input,select,textarea{
@@ -110,7 +114,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){#toast{transition:none}}
 </style>
 
-<style>html,body{margin:0}html{background:var(--bg)}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<style>[hidden]{display:none!important}html,body{margin:0}html{background:var(--bg)}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 </head>
 <body>
 <div class="wrap" id="app"></div>
@@ -293,6 +297,14 @@ input[type=number]{font-variant-numeric:tabular-nums}
   }
   var DEFAULT_RATE = 2;
   var saveTouched = false;
+  var debtsPaid = false;
+  function debtSegRender(){
+    var seg = document.getElementById('debtSeg');
+    if (!seg) return;
+    var fd = document.getElementById('f-debts');
+    seg.hidden = !(fd && sumText(fd.value) > 0);
+    seg.querySelectorAll('button').forEach(function(bt){ bt.setAttribute('aria-pressed', String((bt.dataset.v === 'paid') === debtsPaid)); });
+  }
   function getRate(){
     var r = rows.filter(function(x){ return x.kind === 'settings'; })[0];
     return r && isFinite(+r.rate) && +r.rate >= 0 ? +r.rate : DEFAULT_RATE;
@@ -348,10 +360,11 @@ input[type=number]{font-variant-numeric:tabular-nums}
         f('f-pocket', 'محفظتي') +
         tf('f-home', 'مصاريف إضافية') +
         tf('f-debts', 'الديون') +
+        '<div id="debtSeg" class="seg" hidden><button type="button" class="segb" data-a="debtSt" data-v="unpaid">لسه ما اتدفعش</button><button type="button" class="segb" data-a="debtSt" data-v="paid">اتدفع</button></div>' +
         '<div class="field"><label for="f-note">ملاحظات</label><input id="f-note" type="text" autocomplete="off"></div>' +
         '<div class="preview"><span>صافي الربح</span><b id="f-net">0</b></div>' +
-        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف والصيانة والديون</span><b id="f-left">0</b></div>' +
-        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية − صيانة العربية − الديون.</p>' +
+        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف والصيانة والديون غير المدفوعة</span><b id="f-left">0</b></div>' +
+        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية − صيانة العربية − الديون اللي لسه ما اتدفعتش.</p>' +
         '<button class="btn" data-a="saveDay" id="saveDayBtn">حفظ اليوم</button>' +
         '<button class="btn danger" data-a="delDay" id="delDayBtn" hidden>حذف اليوم</button>' +
       '</div>';
@@ -373,6 +386,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     state.armed = null;
     document.getElementById('delDayBtn').textContent = 'حذف اليوم';
     saveTouched = !!r;
+    debtsPaid = !!(r && r.debtsPaid);
     autoSave();
     preview();
   }
@@ -384,6 +398,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       else if (TEXT_KEYS.indexOf(k) >= 0){ o[k] = sumText(v); o[k + 'T'] = v.trim(); }
       else o[k] = num(v);
     });
+    o.debtsPaid = debtsPaid;
     return o;
   }
   function preview(){
@@ -393,7 +408,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
     if (!el) return;
     el.textContent = fmt(n) + ' ج.م';
     el.className = n < 0 ? 'neg' : '';
-    var left = num(o.cash) - num(o.pocket) - num(o.home) - num(o.save) - num(o.debts);
+    var left = num(o.cash) - num(o.pocket) - num(o.home) - num(o.save) - (debtsPaid ? 0 : num(o.debts));
+    debtSegRender();
     var le = document.getElementById('f-left');
     if (le){ le.textContent = fmt(left) + ' ج.م'; le.className = left < 0 ? 'neg' : ''; }
     TEXT_KEYS.forEach(function(k){
@@ -512,7 +528,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
       kpi('إجمالي الإيراد', fmt(gross)) + kpi('بقشيش / مكافآت', fmt(tips)) +
       kpi('البنزين', fmt(fuel)) + kpi('مصاريف إضافية (باركينج/رسوم)', fmt(other)) +
       kpi('ربح الكيلو', fmt(perKm)) + kpi('ربح الساعة', fmt(perHr)) + '</div>';
-    h += '<div class="grid2">' + kpi('محفظتي', fmt(sum(list, 'pocket'))) + kpi('مصاريف إضافية', fmt(sum(list, 'home'))) + '</div>';
+    h += '<div class="grid2">' + kpi('محفظتي', fmt(sum(list, 'pocket'))) + kpi('مصاريف إضافية', fmt(sum(list, 'home'))) +
+      kpi('ديون لسه عليك', fmt(all.filter(function(r){ return num(r.debts) > 0 && !r.debtsPaid; }).reduce(function(a, r){ return a + num(r.debts); }, 0))) +
+      kpi('ديون اتدفعت الشهر ده', fmt(list.filter(function(r){ return num(r.debts) > 0 && r.debtsPaid; }).reduce(function(a, r){ return a + num(r.debts); }, 0))) + '</div>';
     h += '<div class="card"><h2>صافي الربح كل يوم</h2><div style="height:8px"></div>' + (list.length ? chartSvg(list) : '<p class="muted">مفيش أيام في الشهر ده.</p>') + '</div>';
     h += '<div class="card"><h2>صندوق العربية</h2><div style="height:8px"></div><div class="grid2">' +
       kpi('مخصص للصيانة', fmt(saved)) + kpi('مصروف الشهر ده', fmt(spent)) + '</div>' +
@@ -540,7 +558,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       if (num(r.cash)) meta += ' · إجمالي ' + fmt(r.cash);
       if (num(r.pocket)) meta += ' · محفظتي ' + fmt(r.pocket);
       if (num(r.home)) meta += ' · إضافية ' + esc(r.homeT || fmt(r.home));
-      if (num(r.debts)) meta += ' · ديون ' + esc(r.debtsT || fmt(r.debts));
+      if (num(r.debts)) meta += ' · ديون ' + esc(r.debtsT || fmt(r.debts)) + (r.debtsPaid ? ' <span class="pill">مدفوع</span>' : ' <span class="pill warn">لسه</span>');
       if (r.note) meta += ' · ' + esc(r.note);
       return '<div class="item" data-a="edit" data-d="' + esc(r.date) + '"><div class="l"><span class="t">' + nameDate(r.date) + '</span><span class="m">' + meta + '</span></div>' +
         '<span class="r ' + (n < 0 ? 'neg' : '') + '">' + fmt(n) + '</span></div>';
@@ -698,6 +716,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       bkMode = 'make'; bkRender();
     },
     bkAsk: function(){ bkMode = 'restore'; bkRender(); },
+    debtSt: function(b){ debtsPaid = b.dataset.v === 'paid'; preview(); },
     useSug: function(){ saveTouched = false; autoSave(); preview(); },
     bkFile: async function(b){
       if (!rows.length){ toast('مفيش بيانات تتحفظ لسه'); return; }
@@ -806,9 +825,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
       try { await remove(id); toast('اتمسح'); } catch (e) { toast('معرفتش أمسح، جرّب تاني'); }
     },
     expDays: function(){
-      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','صيانة العربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','تفاصيل البنود','صافي الربح','ملاحظات'];
+      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','صيانة العربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','حالة الدين','تفاصيل البنود','صافي الربح','ملاحظات'];
       var lines = days().sort(function(a, b){ return a.date < b.date ? -1 : 1; }).map(function(r){
-        return [r.date, r.trips, r.km, r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, itemsText(r), netOf(r), r.note || ''];
+        return [r.date, r.trips, r.km, r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, (num(r.debts) ? (r.debtsPaid ? 'مدفوع' : 'لسه') : ''), itemsText(r), netOf(r), r.note || ''];
       });
       exportCsv('captain-days.csv', head, lines);
     },
