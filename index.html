@@ -51,6 +51,7 @@ textarea{min-height:130px; direction:ltr; font-size:12px; font-family:monospace}
 .kpi .v{font-size:19px; font-weight:800; font-variant-numeric:tabular-nums; overflow-wrap:anywhere}
 .neg{color:var(--bad)}
 .sum{color:var(--accent-fg); font-weight:800}
+.odobig{font-size:36px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--accent-fg); line-height:1.2}
 .seg{display:flex; gap:8px}
 .segb{flex:1; min-height:44px; border-radius:12px; border:1px solid var(--line); background:var(--surface2); color:var(--muted); font:inherit; font-weight:800; font-size:15px; cursor:pointer}
 .segb[aria-pressed=true]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink)}
@@ -283,7 +284,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     return '<div class="field"><label for="' + id + '">' + label + '</label><input id="' + id + '" type="' + (type || 'number') + '" ' + (extra || 'inputmode="decimal" min="0" step="any"') + '></div>';
   }
 
-  var TEXT_KEYS = ['other','home','debts'];
+  var TEXT_KEYS = ['other','home','debts','kmOther'];
   function sumText(v){
     var t = String(v == null ? '' : v)
       .replace(/[٠-٩]/g, function(d){ return String(d.charCodeAt(0) - 0x0660); })
@@ -333,13 +334,46 @@ input[type=number]{font-variant-numeric:tabular-nums}
     }
     updateSaveHint();
   }
+  function getSettings(){
+    return rows.filter(function(x){ return x.kind === 'settings'; })[0] || {};
+  }
+  function saveSettings(patch){
+    var cur = Object.assign({}, getSettings()); delete cur.id;
+    return put('settings', Object.assign({ kind:'settings', rate: getRate() }, cur, patch));
+  }
+  function odoIsSet(){ var o = getSettings().odoOffset; return o != null && o !== '' && isFinite(+o); }
+  function dayKm(r){ return num(r.km) + num(r.kmOther); }
+  function totalKm(){ return days().reduce(function(a, r){ return a + dayKm(r); }, 0); }
+  function odoBefore(date){
+    var t = 0;
+    days().forEach(function(r){ if (r.date < date) t += dayKm(r); });
+    return num(getSettings().odoOffset) + t;
+  }
+  function odoAfter(date){
+    var t = 0;
+    days().forEach(function(r){ if (r.date <= date) t += dayKm(r); });
+    return num(getSettings().odoOffset) + t;
+  }
+  function currentOdo(){ return odoIsSet() ? num(getSettings().odoOffset) + totalKm() : 0; }
+  function odoHintRender(){
+    var h = document.getElementById('odoHint');
+    if (!h) return;
+    var add = num(document.getElementById('f-km').value) + sumText(document.getElementById('f-kmOther').value), t = '';
+    if (odoIsSet()){
+      var before = odoBefore(document.getElementById('f-date').value);
+      t = 'العداد كان ' + fmt(before, 0) + (add > 0 ? ' وهيبقى ' + fmt(before + add, 0) : '');
+    } else if (add > 0){
+      t = 'اضبط العداد من تاب العربية علشان الكيلومترات دي تتضاف عليه.';
+    }
+    h.textContent = t; h.hidden = !t;
+  }
   function tf(id, label){
     return '<div class="field"><label for="' + id + '">' + label + ' <span class="sum" id="s-' + id.slice(2) + '"></span></label>' +
       '<input id="' + id + '" type="text" autocomplete="off" autocapitalize="off" enterkeyhint="next"></div>';
   }
   function itemsText(r){
     var out = [];
-    [['other','رسوم'],['home','إضافية'],['debts','ديون']].forEach(function(p){
+    [['kmOther','مشاوير'],['other','رسوم'],['home','إضافية'],['debts','ديون']].forEach(function(p){
       if (r[p[0] + 'T']) out.push(p[1] + ': ' + r[p[0] + 'T']);
     });
     return out.join(' | ');
@@ -349,7 +383,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
       '<div id="editBanner" class="banner" hidden>اليوم ده متسجّل قبل كده. أي تعديل هيحل محله.</div>' +
       '<div class="card form">' +
         f('f-date', 'التاريخ', 'date', '') +
-        '<div class="row">' + f('f-trips', 'عدد الرحلات', 'number', 'inputmode="numeric" min="0" step="1"') + f('f-km', 'الكيلومترات') + '</div>' +
+        '<div class="row">' + f('f-trips', 'عدد الرحلات', 'number', 'inputmode="numeric" min="0" step="1"') + f('f-km', 'كيلومترات الشغل') + '</div>' +
+        tf('f-kmOther', 'كيلومترات خارج الشغل (مشاوير)') +
+        '<div id="odoHint" class="muted" hidden></div>' +
         '<div class="row">' + f('f-hours', 'ساعات الشغل') + f('f-gross', 'إيراد الرحلات (بعد عمولة أوبر)') + '</div>' +
         '<div class="row">' + f('f-tips', 'بقشيش / مكافآت') + tf('f-other', 'مصاريف إضافية (باركينج/رسوم)') + '</div>' +
         '<div class="row">' + f('f-liters', 'لترات البنزين') + f('f-fuel', 'تكلفة البنزين') + '</div>' +
@@ -370,7 +406,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       '</div>';
   }
 
-  var DAY_IDS = { trips:'f-trips', km:'f-km', hours:'f-hours', gross:'f-gross', tips:'f-tips', liters:'f-liters', fuel:'f-fuel', other:'f-other', save:'f-save', cash:'f-cash', pocket:'f-pocket', home:'f-home', debts:'f-debts', note:'f-note' };
+  var DAY_IDS = { trips:'f-trips', km:'f-km', kmOther:'f-kmOther', hours:'f-hours', gross:'f-gross', tips:'f-tips', liters:'f-liters', fuel:'f-fuel', other:'f-other', save:'f-save', cash:'f-cash', pocket:'f-pocket', home:'f-home', debts:'f-debts', note:'f-note' };
 
   function loadDay(date){
     var r = days().filter(function(x){ return x.date === date; })[0];
@@ -417,6 +453,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       var sp = document.getElementById('s-' + k);
       if (sp) sp.textContent = (raw.trim() && !isPlainNumber(raw)) ? '= ' + fmt(sumText(raw)) : '';
     });
+    odoHintRender();
   }
   function initAdd(){
     var d = state.editDate || ymd(new Date());
@@ -424,7 +461,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     document.getElementById('f-date').value = d;
     loadDay(d);
     document.getElementById('f-date').addEventListener('change', function(e){ if (e.target.value) loadDay(e.target.value); });
-    document.getElementById('f-km').addEventListener('input', function(){ autoSave(); preview(); });
+    document.getElementById('f-km').addEventListener('input', function(){ autoSave(); odoHintRender(); preview(); });
     document.getElementById('f-save').addEventListener('input', function(e){ saveTouched = e.target.value.trim() !== ''; updateSaveHint(); });
     app.querySelectorAll('.card input').forEach(function(el){ el.addEventListener('input', preview); });
   }
@@ -432,6 +469,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
   function carView(){
     var opts = TYPES.map(function(t){ return '<option>' + t + '</option>'; }).join('');
     return '<div class="topbar"><h2>مصاريف العربية</h2><span id="status"></span></div>' +
+      '<div class="card form"><h2>عداد الكيلومترات</h2><div id="odoBig" class="odobig"></div><p class="muted" id="odoInfo"></p>' +
+        '<div class="row">' + f('o-set', 'اضبط العداد على (كم)', 'number', 'inputmode="decimal" min="0" step="any"') + '<button class="btn" data-a="saveOdo">ضبط</button></div></div>' +
       '<div id="carStats" class="grid2"></div>' +
       '<div class="card form"><h2>صيانة الكيلو</h2>' +
         '<p class="muted">عن كل كيلو بتشتغله بتحوّش المبلغ ده للصيانة. بيتحسب لوحده في «يوم جديد» وتقدر تعدله بإيدك في أي يوم.</p>' +
@@ -448,10 +487,15 @@ input[type=number]{font-variant-numeric:tabular-nums}
       '</div>' +
       '<h2>السجل</h2><div id="carList" class="list"></div>';
   }
-  function initCar(){ document.getElementById('c-date').value = ymd(new Date()); document.getElementById('r-rate').value = getRate(); }
+  function initCar(){
+    document.getElementById('c-date').value = ymd(new Date());
+    document.getElementById('r-rate').value = getRate();
+    if (odoIsSet()){ var cur = String(Math.round(currentOdo())); document.getElementById('o-set').value = cur; document.getElementById('c-odo').value = cur; }
+  }
 
   /* ---------------------------------------------------------------- data fill */
   function latestOdo(){
+    if (odoIsSet()) return currentOdo();
     var m = 0;
     cars().forEach(function(c){ if (num(c.odo) > m) m = num(c.odo); });
     return m;
@@ -524,10 +568,11 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var perKm = km ? net / km : 0, perHr = hrs ? net / hrs : 0, perDay = worked ? net / worked : 0;
     var h = '<div class="card hero"><span class="lbl">صافي ربح الشهر</span><span class="num">' + fmt(net) + ' ج.م</span><span class="sub">' + worked + ' يوم شغل · متوسط ' + fmt(perDay, 0) + ' ج.م في اليوم</span></div>';
     h += '<div class="grid2">' +
-      kpi('الرحلات', fmt(trips, 0)) + kpi('الكيلومترات', fmt(km, 1)) +
+      kpi('الرحلات', fmt(trips, 0)) + kpi('كيلومترات الشغل', fmt(km, 1)) +
       kpi('إجمالي الإيراد', fmt(gross)) + kpi('بقشيش / مكافآت', fmt(tips)) +
       kpi('البنزين', fmt(fuel)) + kpi('مصاريف إضافية (باركينج/رسوم)', fmt(other)) +
-      kpi('ربح الكيلو', fmt(perKm)) + kpi('ربح الساعة', fmt(perHr)) + '</div>';
+      kpi('ربح الكيلو', fmt(perKm)) + kpi('ربح الساعة', fmt(perHr)) +
+      kpi('كيلومترات خارج الشغل', fmt(sum(list, 'kmOther'), 1)) + kpi('عداد العربية', odoIsSet() ? fmt(currentOdo(), 0) + ' كم' : '-') + '</div>';
     h += '<div class="grid2">' + kpi('محفظتي', fmt(sum(list, 'pocket'))) + kpi('مصاريف إضافية', fmt(sum(list, 'home'))) +
       kpi('ديون لسه عليك', fmt(all.filter(function(r){ return num(r.debts) > 0 && !r.debtsPaid; }).reduce(function(a, r){ return a + num(r.debts); }, 0))) +
       kpi('ديون اتدفعت الشهر ده', fmt(list.filter(function(r){ return num(r.debts) > 0 && r.debtsPaid; }).reduce(function(a, r){ return a + num(r.debts); }, 0))) + '</div>';
@@ -554,6 +599,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
     el.innerHTML = list.map(function(r){
       var n = netOf(r);
       var meta = fmt(r.trips, 0) + ' رحلة · ' + fmt(r.km, 1) + ' كم · بنزين ' + fmt(r.fuel);
+      if (num(r.kmOther)) meta += ' · خارج الشغل ' + esc(r.kmOtherT && !isPlainNumber(r.kmOtherT) ? r.kmOtherT : fmt(r.kmOther, 1) + ' كم');
+      if (odoIsSet()) meta += ' · عداد ' + fmt(odoAfter(r.date), 0);
       if (num(r.other)) meta += ' · رسوم ' + esc(r.otherT || fmt(r.other));
       if (num(r.cash)) meta += ' · إجمالي ' + fmt(r.cash);
       if (num(r.pocket)) meta += ' · محفظتي ' + fmt(r.pocket);
@@ -573,6 +620,17 @@ input[type=number]{font-variant-numeric:tabular-nums}
     var odo = latestOdo();
     var total = cs.reduce(function(a, c){ return a + num(c.cost); }, 0);
     st.innerHTML = kpi('آخر قراءة عداد', odo ? fmt(odo, 0) + ' كم' : '-') + kpi('إجمالي المصاريف', fmt(total) + ' ج.م');
+    var ob = document.getElementById('odoBig'), oi = document.getElementById('odoInfo');
+    if (ob && oi){
+      var wk = sum(days(), 'km'), ot = sum(days(), 'kmOther');
+      if (odoIsSet()){
+        ob.textContent = fmt(currentOdo(), 0) + ' كم';
+        oi.textContent = 'منذ بدأت التسجيل: شغل ' + fmt(wk, 1) + ' كم، وخارج الشغل ' + fmt(ot, 1) + ' كم. أي كيلومترات تسجلها في «يوم جديد» بتتضاف هنا لوحدها.';
+      } else {
+        ob.textContent = '-';
+        oi.textContent = 'العداد لسه متضبطش. اكتب قراءة العداد دلوقتي وادوس ضبط، وبعدها كل كيلومتر تسجله (شغل أو مشوار) بيتضاف لوحده.';
+      }
+    }
     var ri = document.getElementById('rateInfo');
     if (ri){
       var kmAll = sum(days(), 'km');
@@ -716,6 +774,14 @@ input[type=number]{font-variant-numeric:tabular-nums}
       bkMode = 'make'; bkRender();
     },
     bkAsk: function(){ bkMode = 'restore'; bkRender(); },
+    saveOdo: async function(b){
+      var v = parseFloat(document.getElementById('o-set').value);
+      if (!isFinite(v) || v < 0){ toast('اكتب قراءة العداد'); return; }
+      b.disabled = true;
+      try { await saveSettings({ odoOffset: v - totalKm() }); toast('اتضبط ✓'); }
+      catch (e) { toast('معرفتش أحفظ، جرّب تاني'); }
+      b.disabled = false;
+    },
     debtSt: function(b){ debtsPaid = b.dataset.v === 'paid'; preview(); },
     useSug: function(){ saveTouched = false; autoSave(); preview(); },
     bkFile: async function(b){
@@ -737,7 +803,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
       var v = parseFloat(document.getElementById('r-rate').value);
       if (!isFinite(v) || v < 0){ toast('اكتب رقم صحيح'); return; }
       b.disabled = true;
-      try { await put('settings', { kind:'settings', rate: v }); toast('اتحفظ ✓'); }
+      try { await saveSettings({ rate: v }); toast('اتحفظ ✓'); }
       catch (e) { toast('معرفتش أحفظ، جرّب تاني'); }
       b.disabled = false;
     },
@@ -825,9 +891,9 @@ input[type=number]{font-variant-numeric:tabular-nums}
       try { await remove(id); toast('اتمسح'); } catch (e) { toast('معرفتش أمسح، جرّب تاني'); }
     },
     expDays: function(){
-      var head = ['التاريخ','عدد الرحلات','الكيلومترات','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','صيانة العربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','حالة الدين','تفاصيل البنود','صافي الربح','ملاحظات'];
+      var head = ['التاريخ','عدد الرحلات','كيلومترات الشغل','كيلومترات خارج الشغل','العداد بعد اليوم','ساعات الشغل','إيراد الرحلات','بقشيش','لترات البنزين','تكلفة البنزين','مصاريف إضافية (باركينج/رسوم)','صيانة العربية','إجمالي الفلوس','محفظتي','مصاريف إضافية','الديون','حالة الدين','تفاصيل البنود','صافي الربح','ملاحظات'];
       var lines = days().sort(function(a, b){ return a.date < b.date ? -1 : 1; }).map(function(r){
-        return [r.date, r.trips, r.km, r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, (num(r.debts) ? (r.debtsPaid ? 'مدفوع' : 'لسه') : ''), itemsText(r), netOf(r), r.note || ''];
+        return [r.date, r.trips, r.km, r.kmOther, (odoIsSet() ? Math.round(odoAfter(r.date)) : ''), r.hours, r.gross, r.tips, r.liters, r.fuel, r.other, r.save, r.cash, r.pocket, r.home, r.debts, (num(r.debts) ? (r.debtsPaid ? 'مدفوع' : 'لسه') : ''), itemsText(r), netOf(r), r.note || ''];
       });
       exportCsv('captain-days.csv', head, lines);
     },
