@@ -350,8 +350,8 @@ input[type=number]{font-variant-numeric:tabular-nums}
         tf('f-debts', 'الديون') +
         '<div class="field"><label for="f-note">ملاحظات</label><input id="f-note" type="text" autocomplete="off"></div>' +
         '<div class="preview"><span>صافي الربح</span><b id="f-net">0</b></div>' +
-        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف والصيانة</span><b id="f-left">0</b></div>' +
-        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية − صيانة العربية.</p>' +
+        '<div class="preview"><span>الباقي بعد المحفظة والمصاريف والصيانة والديون</span><b id="f-left">0</b></div>' +
+        '<p class="muted">صافي الربح = الإيراد + البقشيش − البنزين − المصاريف الإضافية (باركينج/رسوم). المحفظة والمصاريف الإضافية اللي في خانة الفلوس مش بتتخصم من الربح. الباقي = إجمالي الفلوس − المحفظة − المصاريف الإضافية − صيانة العربية − الديون.</p>' +
         '<button class="btn" data-a="saveDay" id="saveDayBtn">حفظ اليوم</button>' +
         '<button class="btn danger" data-a="delDay" id="delDayBtn" hidden>حذف اليوم</button>' +
       '</div>';
@@ -393,7 +393,7 @@ input[type=number]{font-variant-numeric:tabular-nums}
     if (!el) return;
     el.textContent = fmt(n) + ' ج.م';
     el.className = n < 0 ? 'neg' : '';
-    var left = num(o.cash) - num(o.pocket) - num(o.home) - num(o.save);
+    var left = num(o.cash) - num(o.pocket) - num(o.home) - num(o.save) - num(o.debts);
     var le = document.getElementById('f-left');
     if (le){ le.textContent = fmt(left) + ' ج.م'; le.className = left < 0 ? 'neg' : ''; }
     TEXT_KEYS.forEach(function(k){
